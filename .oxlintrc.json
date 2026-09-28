@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "oxc/no-accumulating-spread": "error",
+    "eslint/no-unused-vars": "error",
+    "typescript/no-explicit-any": "error"
+  },
+  "options": { "typeAware": true, "typeCheck": true }
+}

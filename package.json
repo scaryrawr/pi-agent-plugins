@@ -1,0 +1,41 @@
+{
+  "name": "pi-agent-plugins",
+  "version": "0.1.0",
+  "description": "Agent Plugins package loader for pi",
+  "keywords": [
+    "agent-plugins",
+    "pi-package"
+  ],
+  "license": "MIT",
+  "author": "Mike Wallio",
+  "type": "module",
+  "scripts": {
+    "build": "tsgo -p ./tsconfig.json",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint -c .oxlintrc.json --tsconfig ./tsconfig.json src/*.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pi-mcp": "github:scaryrawr/pi-mcp",
+    "typebox": "^1.1.37",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.86.1",
+    "@oxlint/plugins": "1.83.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "oxfmt": "^0.47.0",
+    "oxlint": "1.83.0",
+    "oxlint-tsgolint": "7.0.2002",
+    "vitest": "^4.1.10"
+  },
+  "bundledDependencies": [
+    "pi-mcp"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
