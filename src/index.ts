@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import * as path from "node:path";
 
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerMcpPlugin } from "pi-mcp";
 
 import { configuredSources, readConfig, saveGlobalConfig, globalConfigPath } from "./config.js";
 import {
@@ -11,10 +10,12 @@ import {
   readMarketplace,
   refreshMarketplace,
 } from "./marketplace.js";
+import { registerPluginMcp } from "./mcp.js";
 import { loadPlugin, type PluginResources } from "./plugin.js";
 
 export default function (pi: ExtensionAPI): void {
   let resources: PluginResources[] = [];
+  let mcpServers: string[] = [];
   const warn = (message: string) => console.warn(`[pi-agent-plugins] ${message}`);
 
   async function discover(cwd: string, trusted: boolean): Promise<PluginResources[]> {
@@ -144,12 +145,14 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     resources = await discover(ctx.cwd, ctx.isProjectTrusted());
+    for (const name of mcpServers) pi.unregisterMcpServer(name);
+    mcpServers = [];
     for (const plugin of resources) {
       // Identity is the canonical path, so namesakes and updates keep independent persistent data.
       const id = createHash("sha256").update(plugin.root).digest("hex");
       const data = path.join(getAgentDir(), "plugin-data", id);
       try {
-        await registerMcpPlugin(pi, plugin.root, data);
+        mcpServers.push(...(await registerPluginMcp(pi, plugin, data, warn)));
       } catch (error) {
         warn(`MCP for ${plugin.name}: ${String(error)}`);
       }

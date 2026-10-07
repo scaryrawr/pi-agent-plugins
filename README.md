@@ -1,16 +1,16 @@
 # pi-agent-plugins
 
-Load local [Agent Plugins](https://github.com/agentplugins/agent-plugins-spec/blob/main/spec/1.0.0.md) directories into [pi](https://github.com/earendil-works/pi). This version supports the **published 1.0.0** format (not the 1.1.0 working draft). Portable skills are exposed through `resources_discover`; portable `mcp.json` servers are validated and registered through [pi-mcp](https://github.com/scaryrawr/pi-mcp).
+Load local [Agent Plugins](https://github.com/agentplugins/agent-plugins-spec/blob/main/spec/1.0.0.md) directories into [pi](https://github.com/earendil-works/pi). This version supports the **published 1.0.0** format (not the 1.1.0 working draft). Portable skills are exposed through `resources_discover`; portable `mcp.json` servers are validated and registered through Pi's built-in `registerMcpServer` API (Pi 0.99.1 or newer).
 
 ## Install
 
 ```sh
-pi install git:github.com/scaryrawr/pi-dynamic-tools
-pi install git:github.com/scaryrawr/pi-mcp
 pi install git:github.com/scaryrawr/pi-agent-plugins
 ```
 
-All three extensions must load: pi-mcp owns the MCP connection and pi-dynamic-tools owns tool search/activation. Installing this package's `pi-mcp` library dependency does **not** load its pi extension. No MCP process is started by this loader itself.
+Keep Pi's built-in MCP and tool-search extensions enabled. Pi owns MCP connections, OAuth, tool discovery, execution, and shutdown; this loader only adapts the portable configuration. No separate `pi-mcp` or `pi-dynamic-tools` extension is required.
+
+If upgrading, remove `pi-mcp` and `pi-dynamic-tools` from your Pi settings after updating this loader. Native MCP configuration belongs in `<pi agent directory>/mcp.json` under `mcpServers`, or in a trusted project's `.pi/mcp.json`. Legacy flat maps, `.mcp.json`, cwd-level config, `PI_MCP_CONFIG_DIRS`, and `--mcp` are not read by the built-in support. Use `/mcp` or `pi mcp login <server>` instead of `/mcp-login`; old `mcp-oauth/` credentials require a fresh login. Built-in `tool_search` replaces `search_tools` (keyword ranking only, not the old semantic-model mode).
 
 ## Configure
 
@@ -64,7 +64,7 @@ my-plugin/
 }
 ```
 
-Portable components are discovered **only** at `skills/<name>/SKILL.md` (one level deep) and root `mcp.json`. Missing locations are fine; invalid skills or MCP server entries do not prevent valid siblings from loading. pi-mcp supports stdio and Streamable HTTP but skips legacy `sse`. Servers are named `<plugin-name>_<server-name>` and searchable with `search_tools`. MCP subprocesses receive `PLUGIN_ROOT` and persistent `PLUGIN_DATA`; data is stored in `<pi agent directory>/plugin-data/<hash-of-canonical-plugin-root>`. Do not remove this directory if you want to preserve server state across plugin updates. After editing config or package contents, use `/reload` to restart the extension runtime and refresh resources and MCP connections. A registration cannot replace an already connected server within the same runtime.
+Portable components are discovered **only** at `skills/<name>/SKILL.md` (one level deep) and root `mcp.json`. Missing locations are fine; invalid skills or MCP server entries do not prevent valid siblings from loading. The adapter supports stdio and Streamable HTTP but skips legacy `sse`. Server names contain a sanitized plugin name, a canonical-root identity hash, and a sanitized server name with a name hash, so namesakes and punctuation cannot collide. Tools are named `mcp__<server>__<tool>` and use `deferred` exposure: Pi's built-in `tool_search` loads matching tools on demand. Registered servers appear in `/mcp`; a matching `mcp.json` entry takes precedence. Portable env/header values remain literal (only stdio `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` placeholders expand); they do not gain Pi's shell-command or environment interpolation syntax. MCP subprocesses receive `PLUGIN_ROOT` and persistent `PLUGIN_DATA`; data is stored in `<pi agent directory>/plugin-data/<hash-of-canonical-plugin-root>`. Do not remove this directory if you want to preserve server state across plugin updates. After editing config or package contents, use `/reload` to restart the extension runtime and refresh resources and MCP connections. Pi can replace registrations and disconnect withdrawn servers within a runtime; a new session rebuilds this loader's registrations.
 
 **Prompts are not a portable Agent Plugins v1 component.** This extension adopts the pi-specific namespace `com.scaryrawr.pi/` and loads direct `.md` files from its `prompts/` directory as pi prompt templates. A root-level `prompts/` directory is deliberately ignored. Paths escaping the resolved plugin root via symlinks are ignored. Pi may further validate or deduplicate contributed skills/templates according to its own resource rules.
 
@@ -78,4 +78,4 @@ npm run test
 npm run fmt:check
 ```
 
-`npm install` requires access to the configured npm registry and the Git dependencies. The pi-mcp dependency is bundled for import resolution; its extension still needs separate installation.
+`npm install` requires access to the configured npm registry. There are no Git dependencies or bundled MCP transports.
