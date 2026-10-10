@@ -33,6 +33,7 @@ const manifestSchema = Compile(
       license: Type.Optional(Type.String()),
       keywords: Type.Optional(Type.Array(Type.String())),
       extensions: Type.Optional(Type.Unknown()),
+      hooks: Type.Optional(Type.Unknown()),
     },
     { additionalProperties: true },
   ),
@@ -49,6 +50,7 @@ const fields = new Set([
   "license",
   "keywords",
   "extensions",
+  "hooks",
 ]);
 const skillName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -81,6 +83,8 @@ export interface PluginResources {
   name: string;
   skillPaths: string[];
   promptPaths: string[];
+  hookSources?: unknown[];
+  hookStyle?: "copilot" | "codex";
 }
 
 function validSkill(content: string, directory: string): boolean {
@@ -188,5 +192,29 @@ export async function loadPlugin(
   } catch (error) {
     warn(`Ignoring invalid prompts extension: ${String(error)}`);
   }
-  return { root, name: plugin.name, skillPaths, promptPaths };
+  const hookStyle = manifestPath === path.join(root, "plugin.json") ? "copilot" : "codex";
+  const hookSources: unknown[] = [];
+  const entries =
+    plugin.hooks === undefined
+      ? hookStyle === "codex"
+        ? ["./hooks/hooks.json"]
+        : ["./hooks.json", "./hooks/hooks.json"]
+      : Array.isArray(plugin.hooks)
+        ? plugin.hooks
+        : [plugin.hooks];
+  for (const entry of entries) {
+    try {
+      if (typeof entry === "string") {
+        if (!entry.startsWith("./")) throw new Error("Hook paths must start with ./");
+        const file = await checked(root, entry, "file");
+        if (file) hookSources.push(JSON.parse(await readFile(file, "utf8")));
+        else if (plugin.hooks !== undefined) warn(`Missing hook file ${entry}`);
+      } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        hookSources.push(entry);
+      } else throw new Error("Invalid hooks entry");
+    } catch (error) {
+      warn(`Ignoring hooks component: ${String(error)}`);
+    }
+  }
+  return { root, name: plugin.name, skillPaths, promptPaths, hookSources, hookStyle };
 }

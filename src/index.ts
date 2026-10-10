@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { configuredSources, readConfig, saveGlobalConfig, globalConfigPath } from "./config.js";
+import { HookRuntime, registerHooks } from "./hooks.js";
 import {
   installMarketplace,
   normalizeSource,
@@ -17,6 +18,7 @@ export default function (pi: ExtensionAPI): void {
   let resources: PluginResources[] = [];
   let mcpServers: string[] = [];
   const warn = (message: string) => console.warn(`[pi-agent-plugins] ${message}`);
+  const hooks = new HookRuntime(warn);
 
   async function discover(cwd: string, trusted: boolean): Promise<PluginResources[]> {
     const result: PluginResources[] = [];
@@ -145,6 +147,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     resources = await discover(ctx.cwd, ctx.isProjectTrusted());
+    hooks.load(resources);
     for (const name of mcpServers) pi.unregisterMcpServer(name);
     mcpServers = [];
     for (const plugin of resources) {
@@ -161,10 +164,14 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("resources_discover", async (event, ctx) => {
     // Reload can update files without a session restart; do not add MCP registrations here.
-    if (event.reason === "reload") resources = await discover(event.cwd, ctx.isProjectTrusted());
+    if (event.reason === "reload") {
+      resources = await discover(event.cwd, ctx.isProjectTrusted());
+      hooks.load(resources);
+    }
     return {
       skillPaths: resources.flatMap((plugin) => plugin.skillPaths),
       promptPaths: resources.flatMap((plugin) => plugin.promptPaths),
     };
   });
+  registerHooks(pi, hooks);
 }
