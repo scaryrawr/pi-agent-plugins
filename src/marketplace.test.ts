@@ -61,6 +61,63 @@ it("isolates invalid entries and refuses marketplace paths escaping through syml
   assert.equal(warnings.length, 4);
 });
 
+it("reads Codex catalogs and isolates remote, invalid, and escaping object sources", async () => {
+  const root = await fixture();
+  const outside = await fixture();
+  await mkdir(path.join(root, ".agents/plugins"), { recursive: true });
+  await mkdir(path.join(root, "plugins/good"), { recursive: true });
+  await symlink(outside, path.join(root, "plugins/escape"));
+  await writeFile(
+    path.join(root, ".agents/plugins/marketplace.json"),
+    JSON.stringify({
+      name: "scarydex",
+      plugins: [
+        { name: "good", source: { source: "local", path: "./plugins/good" } },
+        { name: "escape", source: { source: "local", path: "./plugins/escape" } },
+        { name: "traversal", source: { source: "local", path: "./../" } },
+        { name: "remote", source: { source: "github", path: "./plugins/good" } },
+        { name: "invalid", source: { source: "local", path: 1 } },
+      ],
+    }),
+  );
+  const warnings: string[] = [];
+  const catalog = await readMarketplace(root, (message) => warnings.push(message));
+  assert.equal(catalog.name, "scarydex");
+  assert.deepEqual(
+    catalog.plugins.map((p) => p.name),
+    ["good"],
+  );
+  assert.equal(warnings.length, 4);
+});
+
+it("does not fall back from an invalid or escaping GitHub catalog to a Codex catalog", async () => {
+  const root = await fixture();
+  const outside = await fixture();
+  await mkdir(path.join(root, ".agents/plugins"), { recursive: true });
+  await writeFile(
+    path.join(root, ".agents/plugins/marketplace.json"),
+    '{"name":"fallback","plugins":[]}',
+  );
+  await writeFile(path.join(outside, "marketplace.json"), '{"name":"outside","plugins":[]}');
+  await symlink(
+    path.join(outside, "marketplace.json"),
+    path.join(root, ".github/plugin/marketplace.json"),
+  );
+  await assert.rejects(readMarketplace(root));
+});
+
+it("rejects escaping Codex catalog manifests", async () => {
+  const root = await fixture();
+  const outside = await fixture();
+  await mkdir(path.join(root, ".agents/plugins"), { recursive: true });
+  await writeFile(path.join(outside, "marketplace.json"), '{"name":"outside","plugins":[]}');
+  await symlink(
+    path.join(outside, "marketplace.json"),
+    path.join(root, ".agents/plugins/marketplace.json"),
+  );
+  await assert.rejects(readMarketplace(root));
+});
+
 it("rejects marketplace manifests outside the real root", async () => {
   const root = await fixture();
   const outside = await fixture();

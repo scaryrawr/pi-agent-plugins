@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
@@ -67,6 +67,34 @@ it("accepts manifests without $schema and discovers their skills", async () => {
     "Ignoring unknown plugin.json field: skills",
     "Ignoring unknown plugin.json field: agents",
   ]);
+});
+
+it("loads Codex manifests while keeping skills rooted at the plugin directory", async () => {
+  const root = await fixture({ name: "decide", skills: "./skills/", interface: {} });
+  await mkdir(path.join(root, ".codex-plugin"));
+  await rename(path.join(root, "plugin.json"), path.join(root, ".codex-plugin/plugin.json"));
+  await mkdir(path.join(root, "skills/decide"), { recursive: true });
+  await writeFile(
+    path.join(root, "skills/decide/SKILL.md"),
+    "---\nname: decide\ndescription: Make a decision\n---\n",
+  );
+  const plugin = await loadPlugin(root, () => {});
+  assert.equal(plugin.name, "decide");
+  assert.deepEqual(plugin.skillPaths, [path.join(await realpath(root), "skills/decide/SKILL.md")]);
+});
+
+it("rejects escaping Codex manifests and does not bypass invalid root manifests", async () => {
+  const root = await fixture();
+  const outside = await fixture();
+  await mkdir(path.join(root, ".codex-plugin"));
+  await rename(path.join(root, "plugin.json"), path.join(root, "original.json"));
+  await symlink(path.join(outside, "plugin.json"), path.join(root, ".codex-plugin/plugin.json"));
+  await assert.rejects(loadPlugin(root, () => {}));
+  const { unlink } = await import("node:fs/promises");
+  await unlink(path.join(root, ".codex-plugin/plugin.json"));
+  await rename(path.join(root, "original.json"), path.join(root, ".codex-plugin/plugin.json"));
+  await writeFile(path.join(root, "plugin.json"), '{"name":"INVALID"}');
+  await assert.rejects(loadPlugin(root, () => {}));
 });
 
 it("rejects invalid manifests before discovering components", async () => {

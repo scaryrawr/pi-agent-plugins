@@ -1,4 +1,4 @@
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import * as path from "node:path";
 
 import { Type } from "typebox";
@@ -122,8 +122,19 @@ export async function loadPlugin(
 ): Promise<PluginResources> {
   const root = await realpath(rootPath);
   if (!(await stat(root)).isDirectory()) throw new Error("Plugin root must be a directory");
-  const manifestPath = await checked(root, "plugin.json", "file");
-  if (!manifestPath) throw new Error("Missing plugin.json");
+  let manifestPath: string | undefined;
+  for (const location of ["plugin.json", ".codex-plugin/plugin.json"]) {
+    try {
+      await lstat(path.join(root, location));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    manifestPath = await checked(root, location, "file");
+    if (!manifestPath) throw new Error(`Invalid ${location}`);
+    break;
+  }
+  if (!manifestPath) throw new Error("Missing plugin.json or .codex-plugin/plugin.json");
   const manifest: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!manifestSchema.Check(manifest))
     throw new Error("Invalid or unsupported plugin.json (only v1.0.0 is supported)");

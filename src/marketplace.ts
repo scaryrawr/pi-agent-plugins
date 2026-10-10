@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
@@ -89,7 +89,22 @@ export async function readMarketplace(
 ): Promise<Catalog> {
   const root = await realpath(marketplaceRoot(source));
   if (!(await stat(root)).isDirectory()) throw new Error("Marketplace root must be a directory");
-  const manifest = await realpath(path.join(root, ".github", "plugin", "marketplace.json"));
+  let manifest: string | undefined;
+  for (const location of [".github/plugin/marketplace.json", ".agents/plugins/marketplace.json"]) {
+    const candidate = path.join(root, location);
+    try {
+      await lstat(candidate);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    manifest = await realpath(candidate);
+    break;
+  }
+  if (!manifest)
+    throw new Error(
+      "Missing marketplace manifest (.github/plugin/marketplace.json or .agents/plugins/marketplace.json)",
+    );
   if (!within(root, manifest) || !(await stat(manifest)).isFile())
     throw new Error("Marketplace manifest must be a file inside the marketplace root");
   const data: unknown = JSON.parse(await readFile(manifest, "utf8"));
@@ -109,9 +124,19 @@ export async function readMarketplace(
     try {
       if (typeof entry.name !== "string" || !pluginName.test(entry.name) || names.has(entry.name))
         throw new Error("invalid or duplicate name");
-      if (typeof entry.source !== "string" || !entry.source.startsWith("./"))
+      const source = entry.source;
+      const localPath =
+        typeof source === "string"
+          ? source
+          : source &&
+              typeof source === "object" &&
+              !Array.isArray(source) &&
+              (source as Record<string, unknown>).source === "local"
+            ? (source as Record<string, unknown>).path
+            : undefined;
+      if (typeof localPath !== "string" || !localPath.startsWith("./"))
         throw new Error("only local ./ plugin sources are supported");
-      const location = await realpath(path.resolve(root, entry.source));
+      const location = await realpath(path.resolve(root, localPath));
       if (!within(root, location) || !(await stat(location)).isDirectory())
         throw new Error("plugin source must be a directory inside the marketplace");
       names.add(entry.name);
